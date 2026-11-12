@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Bash syntax
+        run: |
+          bash -n check_api.sh
+          bash -n analyze_logs.sh
+          echo "Синтаксис корректен"
+
+      - name: Make scripts executable
+        run: chmod +x check_api.sh analyze_logs.sh
+
+      - name: Test check_api.sh (expect exit code 0)
+        run: |
+          for attempt in 1 2 3; do
+            echo "Попытка $attempt"
+            if ./check_api.sh https://httpbin.org/status/200; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "check_api.sh вернул ошибку на валидном URL"
+          exit 1
+
+      - name: Negative tests (expect exit code 1)
+        run: |
+          if ./check_api.sh https://httpbin.org/status/500; then
+            echo "Ожидался код возврата 1"
+            exit 1
+          fi
+          if ./check_api.sh invalid-url; then
+            echo "Ожидался код возврата 1"
+            exit 1
+          fi
+          echo "Негативные тесты пройдены"
+
+      - name: Test analyze_logs.sh
+        run: |
+          ./analyze_logs.sh /tmp/access.log 400
+          test "$(wc -l < /tmp/access.log)" -ge 300
+
+      - name: Validate docker-compose.yml
+        run: docker compose config -q
